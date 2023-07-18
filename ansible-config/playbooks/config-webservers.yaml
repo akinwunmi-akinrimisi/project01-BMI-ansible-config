@@ -1,0 +1,76 @@
+---
+- name: Deploy Website from GitHub to EC2 instances
+  hosts: tag_Name_example_asg
+  remote_user: ec2-user
+  become: yes
+
+  vars:
+    github_repo: "https://github.com/cloudboostauk/webApp-BMI-a.git"
+    github_branch: "main"
+    website_dir: "/var/www/html"
+    health_file_path: "{{ website_dir }}/health.html"
+
+  tasks:
+    - name: Update package manager cache
+      yum:
+        name: '*'
+        state: latest
+        update_cache: yes
+
+    - name: Install Apache
+      yum:
+        name: httpd
+        state: present
+
+    - name: Start Apache service
+      service:
+        name: httpd
+        state: started
+        enabled: yes
+
+    - name: Install Git
+      yum:
+        name: git
+        state: present
+
+    - name: Remove existing website files
+      file:
+        path: "{{ website_dir }}/*"
+        state: absent
+        force: yes
+        
+
+    - name: Check if website directory exists
+      stat:
+        path: "{{ website_dir }}"
+      register: website_dir_stat
+      become: no
+
+    - name: Create health.html file
+      copy:
+        content: "Health check: OK"
+        dest: "{{ health_file_path }}"
+        owner: apache
+        group: apache
+        mode: '0644'
+
+    - name: Clone website repository from GitHub
+      git:
+        repo: "{{ github_repo }}"
+        dest: "{{ website_dir }}"
+        version: "{{ github_branch }}"
+        force: yes
+      when: not website_dir_stat.stat.exists
+
+    - name: Set ownership and permissions for website files
+      file:
+        path: "{{ website_dir }}"
+        owner: apache
+        group: apache
+        recurse: yes
+        state: directory
+
+    - name: Restart Apache service
+      service:
+        name: httpd
+        state: restarted
